@@ -9,7 +9,7 @@
 *.user
 *.userosscache
 *.sln.docstates
-
+Simple_Malware_Analysis_Tool.*
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
