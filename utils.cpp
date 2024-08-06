@@ -6,32 +6,38 @@
 #include <fstream>
 
 
-IMAGE_DOS_HEADER PEFile::get_dos_header() const {
+const IMAGE_DOS_HEADER* PEFile::get_dos_header() const {
     return this->dos_header;
-}
+}   
 
-IMAGE_NT_HEADERS PEFile::get_nt_header() const {
+const IMAGE_NT_HEADERS* PEFile::get_nt_header() const {
     return this->nt_header;
 }
 
-    DWORD PEFile::get_entrypoint() const {
-    return get_nt_header().OptionalHeader.AddressOfEntryPoint;
+DWORD PEFile::get_entrypoint() const {
+    return get_nt_header()->OptionalHeader.AddressOfEntryPoint;
 }
 
 int PEFile::get_size_of_optional_header() const {
-    return get_nt_header().FileHeader.SizeOfOptionalHeader;
+    return get_nt_header()->FileHeader.SizeOfOptionalHeader;
 }
 
 int PEFile::get_num_of_sections() const {
-    return get_nt_header().FileHeader.NumberOfSections;
+    return get_nt_header()->FileHeader.NumberOfSections;
 }
 
+DWORD PEFile::get_data_directory_RVA() const {
+    return get_nt_header()->OptionalHeader.DataDirectory->VirtualAddress;
+}
 
+ULONGLONG PEFile::get_image_base() const {
+    return get_nt_header()->OptionalHeader.ImageBase;
+}
 
 std::vector<uint32_t> PEFile::get_section_addresses() const {
     auto nt_header = get_nt_header();
-    auto first_section = IMAGE_FIRST_SECTION(&nt_header);
-    
+    auto first_section = IMAGE_FIRST_SECTION(nt_header);
+
     int num_of_sections = get_num_of_sections();
 
     std::vector<uint32_t> section_addresses(num_of_sections);
@@ -49,13 +55,44 @@ void PEFile::get_first_section_name() const {
 
     // Parse the NT header
     auto nt_header = get_nt_header();
-    auto first_section_header = IMAGE_FIRST_SECTION(&nt_header);
+    auto first_section_header = IMAGE_FIRST_SECTION(nt_header);
 
-    // Print the name of the first section for verification
     std::cout << "First section name: " << first_section_header->Name << std::endl;
 }
 
+void PEFile::print_import_table() const {
+    
+    auto nt_headers = get_nt_header();
+    auto import_directory = nt_headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    auto IMAGE_BASE = get_image_base();
 
+    if (import_directory.Size == 0) {
+        std::cout << "No import table found." << std::endl;
+        return;
+    }
+    
+    auto import_descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(IMAGE_BASE + import_directory.VirtualAddress);
+
+
+    while (import_descriptor->Name) {
+        auto dll_name = reinterpret_cast<const char*>(
+            IMAGE_BASE + import_descriptor->Name);
+
+        std::cout << "DLL: " << dll_name << std::endl;
+
+        auto thunk = reinterpret_cast<IMAGE_THUNK_DATA*>(
+            IMAGE_BASE + import_descriptor->FirstThunk);
+
+        while (thunk->u1.AddressOfData) {
+            auto import_by_name = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(
+                IMAGE_BASE + thunk->u1.AddressOfData);
+
+            std::cout << "  Function: " << import_by_name->Name << std::endl;
+            ++thunk;
+        }
+        ++import_descriptor;
+    }
+}
 
 
 void check_pe_file(const std::vector<std::uint8_t>& targetfile) {
@@ -99,16 +136,4 @@ std::vector<std::uint8_t> read_file(const std::string& filename) {
         std::istreambuf_iterator<char>());
 
     return vec_data;
-}
-
-void get_first(const std::vector<std::uint8_t> targetfile) {
-    auto dos_header = reinterpret_cast<const IMAGE_DOS_HEADER*>(targetfile.data());
-
-    // Parse the NT header
-    auto nt_header = reinterpret_cast<const IMAGE_NT_HEADERS*>(targetfile.data() + dos_header->e_lfanew);
-    auto first_section_header = IMAGE_FIRST_SECTION(nt_header);
-
-    // Print the name of the first section for verification
-    std::cout << "First section name: " << first_section_header->Name << std::endl;
-
 }
